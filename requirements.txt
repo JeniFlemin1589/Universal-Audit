@@ -1,9 +1,7 @@
-google-genai
 fastapi
 uvicorn
-langgraph
-langchain
 python-dotenv
-pydantic
+google-genai
+langchain
+langchain-google-genai
 python-multipart
-aiofiles

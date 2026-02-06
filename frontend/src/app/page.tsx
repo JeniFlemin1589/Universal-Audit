@@ -41,7 +41,11 @@ export default function Home() {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Upload failed (${res.status}): ${err}`);
+      }
 
       const data = await res.json();
       const newFile = { name: data.name, uri: data.uri, type };
@@ -52,9 +56,9 @@ export default function Home() {
         setTargetFiles(prev => [...prev, newFile]);
       }
 
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert(`Failed to upload ${type} file.`);
+      alert(`Failed to upload: ${e.message}`);
     }
   };
 

@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import tempfile
 from google import genai
 from google.genai import types
 
@@ -22,7 +23,8 @@ class UploadedFile:
 class FileManager:
     def __init__(self):
         self.client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
-        self.cache_file = "file_cache.json"
+        # Use temp dir for cache to avoid read-only errors on serverless
+        self.cache_file = os.path.join(tempfile.gettempdir(), "file_cache.json")
         self.cache = self._load_cache()
         # Session Store: { session_id: { "reference": [UploadedFile], "target": [UploadedFile] } }
         self.sessions = {}

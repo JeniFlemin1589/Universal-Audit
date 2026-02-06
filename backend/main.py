@@ -64,8 +64,13 @@ def upload_reference(
         )
         
         # If pending, queue background task
+        # If pending, queue background task OR run sync if on Vercel
         if file_obj.status == "pending":
-            background_tasks.add_task(file_manager.perform_background_upload, file_obj)
+            if os.environ.get("VERCEL"):
+                # Vercel kills bg tasks, so run sync
+                asyncio.run(file_manager.perform_background_upload(file_obj))
+            else:
+                background_tasks.add_task(file_manager.perform_background_upload, file_obj)
             
         return {"name": file_obj.name, "uri": file_obj.uri, "type": file_obj.type, "status": file_obj.status}
         
@@ -93,7 +98,10 @@ def upload_target(
         )
         
         if file_obj.status == "pending":
-            background_tasks.add_task(file_manager.perform_background_upload, file_obj)
+            if os.environ.get("VERCEL"):
+                asyncio.run(file_manager.perform_background_upload(file_obj))
+            else:
+                background_tasks.add_task(file_manager.perform_background_upload, file_obj)
             
         return {"name": file_obj.name, "uri": file_obj.uri, "type": file_obj.type, "status": file_obj.status}
     except Exception as e:
