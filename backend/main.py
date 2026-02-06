@@ -21,7 +21,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize App and FileManager
-app = FastAPI(title="Universal Audit Platform API")
+app = FastAPI(
+    title="Universal Audit Platform",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    root_path="/api"
+)
 file_manager = FileManager()
 
 # CORS config (Allowing Next.js frontend)
