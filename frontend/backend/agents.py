@@ -64,8 +64,9 @@ def strategist_agent(state: AgentState):
     2. Analyze the Reference Documents (if any) to extract specific Criteria/Rules relevant to the User's Query.
     3. Output a JSON list of strictly defined `AuditRule` objects that the Auditor needs to check.
     
-    If the user's query is just "summarize this", create a rule like "Summarize key points".
-    If the user asks "Check for fraud", look for fraud indicators in the references.
+    CRITICAL FALLBACK:
+    If NO Reference Documents are provided, or if they are generic, YOU MUST GENERATE 5-10 STANDARD AUDIT RULES based on the SCENARIO: "{state['scenario']}".
+    DO NOT return an empty list. You MUST provide rules for the Auditor to work with.
     """
     
     # Prepare parts
@@ -85,7 +86,9 @@ def strategist_agent(state: AgentState):
         )
         
         rules = response.parsed
-        if not rules: rules = []
+        if not rules: 
+            # Double fallback if model returns empty list
+            rules = [AuditRule(rule_id="GEN-001", description=f"General compliance check for {state['scenario']}", severity="High")]
         
         logger.info(f"Strategist extracted {len(rules)} rules.")
         return {
@@ -198,7 +201,13 @@ def verifier_agent(state: AgentState):
     #### 4. Final Recommendations
     - Specific corrective actions.
     
+    CRITICAL INSTRUCTION:
+    If you have received Input Files (Reference or Evidence), YOU MUST GENERATE THE REPORT.
+    DO NOT ask the user for files. They are already attached to this prompt.
+    If the findings are empty, PERFORM A GENERAL AUDIT based on the file contents and the Scenario.
+    
     **Tone**: Exhaustive, precise, forensic. Leave no ambiguity.
+    **Output**: ONLY the Markdown report. Do not start with "Okay" or "Here is the report".
     """
     
     parts = []
