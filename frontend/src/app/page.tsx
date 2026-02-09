@@ -11,7 +11,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Home() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const router = useRouter();
 
   const [referenceFiles, setReferenceFiles] = useState<any[]>([]);
@@ -165,10 +165,7 @@ export default function Home() {
             <p className="text-[10px] text-gray-500 font-medium">Platform Analytics</p>
           </div>
         </Link>
-        <button
-          onClick={logout}
-          className="flex items-center gap-2 px-4 py-2 w-full text-[10px] font-bold text-gray-500 hover:text-red-400 transition-colors uppercase tracking-widest justify-center"
-        >
+        <button onClick={() => signOut()} className="w-full flex items-center justify-center gap-2 p-2 mt-4 text-xs font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-red-500/20">
           <LogOut className="w-3 h-3" />
           Sign Out
         </button>
