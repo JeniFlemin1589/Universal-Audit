@@ -77,7 +77,7 @@ def strategist_agent(state: AgentState):
     
     try:
         response = get_client().models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-1.5-pro",
             contents=[types.Content(role="user", parts=parts)],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -130,7 +130,7 @@ def auditor_agent(state: AgentState):
         
         try:
             response = get_client().models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model="gemini-1.5-pro",
                 contents=[
                     types.Content(
                         role="user",
@@ -218,7 +218,7 @@ def verifier_agent(state: AgentState):
     
     try:
         response = get_client().models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-1.5-pro",
             contents=[types.Content(role="user", parts=parts)],
             config=types.GenerateContentConfig(
                 response_mime_type="text/plain" # Free text markdown for the final chat response
