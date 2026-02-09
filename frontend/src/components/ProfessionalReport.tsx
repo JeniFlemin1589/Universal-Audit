@@ -2,7 +2,6 @@ import React, { useRef } from "react";
 import { CheckCircle2, AlertTriangle, Info, FileText, Download, ShieldCheck, ExternalLink, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
-import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
 interface ProfessionalReportProps {
@@ -24,32 +23,13 @@ export default function ProfessionalReport({ report }: ProfessionalReportProps) 
     const riskBorder = isHighRisk ? "border-red-500/20" : isMediumRisk ? "border-amber-500/20" : "border-emerald-500/20";
 
     const handleExportPDF = async () => {
-        if (!reportRef.current || isExporting) return;
+        if (isExporting) return;
 
         try {
             setIsExporting(true);
             console.log("Starting PDF export...");
 
-            const element = reportRef.current;
-
-            // Capture the entire report as a high-quality image
-            const canvas = await html2canvas(element, {
-                scale: 2, // Higher scale for Retina/High-DPI look
-                backgroundColor: "#0a0a0a", // Dark background matching the theme
-                useCORS: true,
-                logging: true, // Enable logging for debugging
-                allowTaint: true,
-                scrollX: 0,
-                scrollY: 0,
-                windowWidth: element.scrollWidth,
-                windowHeight: element.scrollHeight
-            });
-
-            console.log("Canvas captured:", canvas.width, "x", canvas.height);
-
-            const imgData = canvas.toDataURL("image/png");
-
-            // Use A4 dimensions for professional look
+            // Create PDF with A4 dimensions
             const pdf = new jsPDF({
                 orientation: "portrait",
                 unit: "mm",
@@ -58,34 +38,114 @@ export default function ProfessionalReport({ report }: ProfessionalReportProps) 
 
             const pageWidth = pdf.internal.pageSize.getWidth();
             const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 15;
+            const lineHeight = 6;
+            let yPosition = margin;
 
-            // Calculate the image dimensions to fit the page width
-            const imgWidth = pageWidth - 20; // 10mm margin on each side
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            // Helper function to add text with word wrap and page breaks
+            const addText = (text: string, fontSize: number = 10, isBold: boolean = false, color: [number, number, number] = [0, 0, 0]) => {
+                pdf.setFontSize(fontSize);
+                pdf.setFont("helvetica", isBold ? "bold" : "normal");
+                pdf.setTextColor(color[0], color[1], color[2]);
 
-            // Handle multi-page documents
-            let heightLeft = imgHeight;
-            let position = 10; // Top margin
+                const maxWidth = pageWidth - (margin * 2);
+                const lines = pdf.splitTextToSize(text, maxWidth);
 
-            // Add first page
-            pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
-            heightLeft -= (pageHeight - 20); // Account for margins
+                for (const line of lines) {
+                    if (yPosition > pageHeight - margin) {
+                        pdf.addPage();
+                        yPosition = margin;
+                    }
+                    pdf.text(line, margin, yPosition);
+                    yPosition += lineHeight;
+                }
+            };
 
-            // Add subsequent pages if needed
-            while (heightLeft > 0) {
-                position = heightLeft - imgHeight + 10;
-                pdf.addPage();
-                pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
-                heightLeft -= (pageHeight - 20);
+            // Add header
+            pdf.setFillColor(20, 20, 30);
+            pdf.rect(0, 0, pageWidth, 40, "F");
+
+            pdf.setTextColor(255, 255, 255);
+            pdf.setFontSize(24);
+            pdf.setFont("helvetica", "bold");
+            pdf.text("AUDIT REPORT", margin, 25);
+
+            pdf.setFontSize(10);
+            pdf.setFont("helvetica", "normal");
+            pdf.text(`Generated: ${new Date().toLocaleString()}`, margin, 35);
+
+            yPosition = 50;
+
+            // Add risk assessment badge
+            const riskLevel = report.toLowerCase().includes("fail") || report.toLowerCase().includes("critical")
+                ? "CRITICAL"
+                : report.toLowerCase().includes("warning")
+                    ? "MODERATE"
+                    : "OPTIMAL";
+
+            const riskColor: [number, number, number] = riskLevel === "CRITICAL" ? [220, 53, 69] : riskLevel === "MODERATE" ? [255, 193, 7] : [40, 167, 69];
+
+            pdf.setFillColor(riskColor[0], riskColor[1], riskColor[2]);
+            pdf.roundedRect(pageWidth - margin - 40, 10, 40, 12, 2, 2, "F");
+            pdf.setTextColor(255, 255, 255);
+            pdf.setFontSize(8);
+            pdf.text(riskLevel, pageWidth - margin - 35, 18);
+
+            yPosition = 55;
+
+            // Process the markdown content
+            const lines = report.split('\n');
+
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+
+                if (!trimmedLine) {
+                    yPosition += 3; // Empty line spacing
+                    continue;
+                }
+
+                // Handle headers
+                if (trimmedLine.startsWith('### ')) {
+                    yPosition += 3;
+                    addText(trimmedLine.replace('### ', ''), 11, true, [66, 133, 244]);
+                } else if (trimmedLine.startsWith('## ')) {
+                    yPosition += 5;
+                    addText(trimmedLine.replace('## ', ''), 14, true, [33, 33, 33]);
+                    // Add underline
+                    pdf.setDrawColor(200, 200, 200);
+                    pdf.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
+                } else if (trimmedLine.startsWith('# ')) {
+                    yPosition += 5;
+                    addText(trimmedLine.replace('# ', ''), 18, true, [0, 0, 0]);
+                } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+                    // Bullet points
+                    addText('• ' + trimmedLine.substring(2), 10, false, [60, 60, 60]);
+                } else if (trimmedLine.startsWith('**') && trimmedLine.endsWith('**')) {
+                    // Bold text
+                    addText(trimmedLine.replace(/\*\*/g, ''), 10, true, [33, 33, 33]);
+                } else {
+                    // Regular text
+                    addText(trimmedLine.replace(/\*\*/g, '').replace(/\*/g, ''), 10, false, [60, 60, 60]);
+                }
             }
 
-            const filename = `Audit_Report_${new Date().toISOString().split('T')[0]}_${Date.now()}.pdf`;
+            // Add footer
+            const totalPages = pdf.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                pdf.setPage(i);
+                pdf.setFontSize(8);
+                pdf.setTextColor(150, 150, 150);
+                pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: "center" });
+                pdf.text("Generated by Universal Audit Platform", margin, pageHeight - 10);
+            }
+
+            const filename = `Audit_Report_${new Date().toISOString().split('T')[0]}.pdf`;
             pdf.save(filename);
             console.log("PDF saved:", filename);
 
         } catch (error) {
             console.error("PDF Export failed:", error);
-            alert("Failed to generate PDF. Please check the console for details.");
+            alert("Failed to generate PDF: " + (error as Error).message);
         } finally {
             setIsExporting(false);
         }
