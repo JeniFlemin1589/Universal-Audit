@@ -3,9 +3,11 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, LogOut, FileText, CheckCircle, Clock } from "lucide-react";
+import { ArrowLeft, LogOut, FileText, CheckCircle, Clock, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function ProfilePage() {
     const { user, loading, signOut } = useAuth();
@@ -23,14 +25,22 @@ export default function ProfilePage() {
 
     const fetchSessionData = async (uid: string) => {
         try {
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const res = await fetch(`${API_URL}/session/${uid}`);
-            if (res.ok) {
-                const data = await res.json();
+            setIsLoadingData(true);
+            // Fetch directly from Firestore using the user's UID as session ID
+            const docRef = doc(db, "sessions", uid);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                console.log("Session data loaded:", data);
                 setSessionData(data);
+            } else {
+                console.log("No session data found for user:", uid);
+                setSessionData(null);
             }
         } catch (e) {
-            console.error("Failed to fetch session data", e);
+            console.error("Failed to fetch session data from Firestore", e);
+            setSessionData(null);
         } finally {
             setIsLoadingData(false);
         }
@@ -90,10 +100,20 @@ export default function ProfilePage() {
 
                     {/* Activity / Files */}
                     <div className="space-y-6">
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-blue-400" />
-                            Recent Activity
-                        </h2>
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <Clock className="w-5 h-5 text-blue-400" />
+                                Recent Activity
+                            </h2>
+                            <button
+                                onClick={() => user && fetchSessionData(user.uid)}
+                                disabled={isLoadingData}
+                                className="flex items-center gap-1 px-3 py-1 text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-50"
+                            >
+                                <RefreshCw className={`w-3 h-3 ${isLoadingData ? 'animate-spin' : ''}`} />
+                                {isLoadingData ? 'Loading...' : 'Refresh'}
+                            </button>
+                        </div>
 
                         <div className="space-y-4">
                             {/* Reference Files */}
