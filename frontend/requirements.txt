@@ -5,3 +5,4 @@ google-genai
 langchain
 langchain-google-genai
 python-multipart
+firebase-admin

@@ -41,15 +41,34 @@ class UploadedFile:
     def __repr__(self):
         return f"UploadedFile(name='{self.name}', status='{self.status}', error='{self.error_message}', uri='{self.uri}')"
 
+import firebase_admin
+from firebase_admin import credentials, firestore
+
 class FileManager:
     def __init__(self):
         self.client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
-        # Use temp dir for cache to avoid read-only errors on serverless
+        
+        # Initialize Firestore
+        try:
+            if not firebase_admin._apps:
+                sa_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
+                if sa_json:
+                    import json
+                    as_dict = json.loads(sa_json)
+                    cred = credentials.Certificate(as_dict)
+                    firebase_admin.initialize_app(cred)
+                    logger.info("Firebase Admin initialized successfully.")
+                else:
+                    logger.warning("FIREBASE_SERVICE_ACCOUNT not found. Falling back to local/default.")
+                    firebase_admin.initialize_app()
+            
+            self.db = firestore.client()
+        except Exception as e:
+            logger.error(f"Failed to initialize Firestore: {e}")
+            self.db = None
+
         self.cache_file = os.path.join(tempfile.gettempdir(), "file_cache.json")
-        self.sessions_file = os.path.join(tempfile.gettempdir(), "sessions_cache.json")
         self.cache = self._load_cache()
-        # Session Store: { session_id: { "reference": [UploadedFile], "target": [UploadedFile] } }
-        self.sessions = self._load_sessions()
 
     def _load_cache(self):
         if os.path.exists(self.cache_file):
@@ -64,82 +83,74 @@ class FileManager:
         with open(self.cache_file, 'w') as f:
             json.dump(self.cache, f)
 
-    def _load_sessions(self):
-        if os.path.exists(self.sessions_file):
-            try:
-                with open(self.sessions_file, 'r') as f:
-                    data = json.load(f)
-                    # Convert dicts back to UploadedFile objects
-                    sessions = {}
-                    for sid, sdata in data.items():
-                        sessions[sid] = {
-                            "reference": [UploadedFile.from_dict(f) for f in sdata.get("reference", [])],
-                            "target": [UploadedFile.from_dict(f) for f in sdata.get("target", [])],
-                            "summary": sdata.get("summary"),
-                            "history": sdata.get("history", [])
-                        }
-                    return sessions
-            except Exception as e:
-                logger.error(f"Failed to load sessions: {e}")
-                return {}
-        return {}
-
-    def _save_sessions(self):
+    def get_session_details(self, session_id: str):
+        """Returns full session details from Firestore."""
+        if not self.db:
+            return {}
+        
         try:
-            # Convert UploadedFile objects to dicts
-            data = {}
-            for sid, sdata in self.sessions.items():
-                data[sid] = {
-                    "reference": [f.to_dict() for f in sdata.get("reference", [])],
-                    "target": [f.to_dict() for f in sdata.get("target", [])],
-                    "summary": sdata.get("summary"),
-                    "history": sdata.get("history", [])
+            doc_ref = self.db.collection("sessions").document(session_id)
+            doc = doc_ref.get()
+            if doc.exists:
+                data = doc.to_dict()
+                # Convert list of dicts to UploadedFile objects
+                return {
+                    "reference": [UploadedFile.from_dict(f) for f in data.get("reference", [])],
+                    "target": [UploadedFile.from_dict(f) for f in data.get("target", [])],
+                    "summary": data.get("summary"),
+                    "history": data.get("history", [])
                 }
-            with open(self.sessions_file, 'w') as f:
-                json.dump(data, f)
         except Exception as e:
-            logger.error(f"Failed to save sessions: {e}")
+            logger.error(f"Failed to load session {session_id} from Firestore: {e}")
+            
+        return {"reference": [], "target": [], "summary": None, "history": []}
 
     def get_session_files(self, session_id: str, file_type: str = "reference"):
-        """Retrieve files for a specific session."""
-        if session_id not in self.sessions:
-            return []
-        return self.sessions[session_id].get(file_type, [])
+        """Retrieve files for a specific session from Firestore."""
+        details = self.get_session_details(session_id)
+        return details.get(file_type, [])
+
+    def _save_session_to_db(self, session_id: str, data: dict):
+        """Internal helper to save data to Firestore."""
+        if not self.db:
+            return
+        
+        try:
+            self.db.collection("sessions").document(session_id).set(data, merge=True)
+            logger.info(f"Session {session_id} saved to Firestore.")
+        except Exception as e:
+            logger.error(f"Failed to save session {session_id} to Firestore: {e}")
 
     def add_file_to_session(self, session_id: str, file_obj: UploadedFile, file_type: str):
-        """Add a file to a session's list."""
-        if session_id not in self.sessions:
-            self.sessions[session_id] = {"reference": [], "target": [], "summary": None, "history": []}
-         
+        """Add a file to a session's list in Firestore."""
+        details = self.get_session_details(session_id)
+        
         # Avoid duplicates in session (by URI)
-        existing = [f for f in self.sessions[session_id][file_type] if f.uri == file_obj.uri]
+        existing = [f for f in details[file_type] if f.uri == file_obj.uri]
         if not existing:
-             self.sessions[session_id][file_type].append(file_obj)
-             self._save_sessions()
+            details[file_type].append(file_obj)
+            
+            # Prepare for DB
+            db_data = {
+                file_type: [f.to_dict() for f in details[file_type]]
+            }
+            self._save_session_to_db(session_id, db_data)
 
     def update_session_summary(self, session_id: str, summary: str):
-        """Updates the session summary."""
-        if session_id not in self.sessions:
-             self.sessions[session_id] = {"reference": [], "target": [], "summary": None, "history": []}
-        self.sessions[session_id]["summary"] = summary
-        self._save_sessions()
-
-    def get_session_details(self, session_id: str):
-        """Returns full session details."""
-        return self.sessions.get(session_id, {})
+        """Updates the session summary in Firestore."""
+        self._save_session_to_db(session_id, {"summary": summary})
 
     async def wait_for_uploads(self, session_id: str, timeout: int = 60):
         """Waits for all pending uploads in the session to complete."""
         import asyncio
         import time
         
-        if session_id not in self.sessions:
+        details = self.get_session_details(session_id)
+        if not details.get("reference") and not details.get("target"):
             return
             
         start_time = time.time()
-        
-        # Check reference files
-        all_files = self.sessions[session_id].get("reference", []) + self.sessions[session_id].get("target", [])
+        all_files = details.get("reference", []) + details.get("target", [])
         
         for f in all_files:
             while f.status in ["pending", "uploading"]:
