@@ -168,21 +168,27 @@ async def chat_stream(request: ChatRequest):
             yield f"data: {json.dumps({'step': 'init', 'status': 'Verifying uploads...'})}\n\n"
             await file_manager.wait_for_uploads(request.session_id)
             
-            # Retrieve session files from FileManager (Single Source of Truth)
-            # We ignore the files passed in request body for security/consistency if we want, 
-            # but for now let's merge or prefer the session store.
+            # CRITICAL FIX: Use the files from the request body directly!
+            # The previous logic re-queried Firestore, which returns empty lists if Firestore is not initialized.
+            # The request body is the source of truth for serverless deployments.
+            # Only fall back to Firestore if the request body has no files (backward compatibility).
             
-            # Actually, LangGraph agents need the 'state'.
-            # Let's fetch the latest list of files for this session from FileManager
-            session_refs = file_manager.get_session_files(request.session_id, "reference")
-            session_targets = file_manager.get_session_files(request.session_id, "target")
+            session_refs = request.reference_files if request.reference_files else file_manager.get_session_files(request.session_id, "reference")
+            session_targets = request.target_files if request.target_files else file_manager.get_session_files(request.session_id, "target")
+            
+            # Log for debugging
+            logger.info(f"Agent State - Reference Files: {len(session_refs)}, Target Files: {len(session_targets)}")
+            for f in session_refs:
+                logger.info(f"  REF: {f.name} -> {f.uri}")
+            for f in session_targets:
+                logger.info(f"  TGT: {f.name} -> {f.uri}")
             
             initial_state = {
                 "user_query": request.message,
                 "scenario": request.scenario,
                 "chat_history": request.history,
-                "reference_files": session_refs, # Use server-side session list
-                "target_files": session_targets, # Use server-side session list
+                "reference_files": session_refs, # Use request body files directly
+                "target_files": session_targets, # Use request body files directly
                 "messages": []
             }
             
