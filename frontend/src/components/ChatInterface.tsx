@@ -72,12 +72,18 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
 
             if (!reader) throw new Error("No reader");
 
+            let buffer = ""; // Buffer to hold incomplete lines
+
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split("\n");
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+
+                const lines = buffer.split("\n");
+                // Keep the last line (potentially incomplete) in the buffer
+                buffer = lines.pop() || "";
 
                 for (const line of lines) {
                     if (!line.trim()) continue;
@@ -90,6 +96,10 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
                             const data = JSON.parse(dataStr);
 
                             if (data.error) {
+                                // If it's a specific overload error, beautify it
+                                if (data.error.includes("503") || data.error.includes("overloaded")) {
+                                    throw new Error("System is currently overloaded. Please wait a moment and try again.");
+                                }
                                 throw new Error(data.error);
                             }
 
@@ -124,13 +134,19 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
                             });
 
                         } catch (e) {
-                            console.error("Parse error", e);
-                            setMessages(prev => {
-                                const newMsgs = [...prev];
-                                const lastMsg = newMsgs[newMsgs.length - 1];
-                                lastMsg.content = `**System Error**: ${e instanceof Error ? e.message : "Protocol mismatch."}`;
-                                return newMsgs;
-                            });
+                            // Ignore parse errors for incomplete chunks (though buffer logic should prevent this usually)
+                            // But handle our thrown errors
+                            if (e instanceof Error && (e.message.includes("overloaded") || e.message.includes("System"))) {
+                                console.error("Critical Stream Error", e);
+                                setMessages(prev => {
+                                    const newMsgs = [...prev];
+                                    const lastMsg = newMsgs[newMsgs.length - 1];
+                                    lastMsg.content = `⚠️ **System Alert**: ${e.message}`;
+                                    return newMsgs;
+                                });
+                                return; // Stop processing
+                            }
+                            console.warn("Non-critical stream parse error", e);
                         }
                     }
                 }
@@ -141,7 +157,7 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
             setMessages(prev => {
                 const newMsgs = [...prev];
                 const lastMsg = newMsgs[newMsgs.length - 1];
-                lastMsg.content = `### Connection Failure\n\nUnable to reach the Audit Intelligence cluster. Please check if the environment variables (API_URL) are configured correctly.\n\n**Details**: ${e.message}`;
+                lastMsg.content = `### ⚠️ Connection Interrupted\n\n${e.message.includes("503") ? "The AI Audit Cluster is currently experiencing high traffic. Please try again in 30 seconds." : e.message}`;
                 return newMsgs;
             });
         } finally {
@@ -184,8 +200,8 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
                         >
                             {/* Avatar */}
                             <div className={`w-9 h-9 lg:w-11 lg:h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-lg border ${msg.role === "assistant"
-                                    ? "bg-gradient-to-br from-indigo-600 to-blue-600 border-indigo-400/30"
-                                    : "bg-gray-800 border-white/10"
+                                ? "bg-gradient-to-br from-indigo-600 to-blue-600 border-indigo-400/30"
+                                : "bg-gray-800 border-white/10"
                                 }`}>
                                 {msg.role === "assistant" ? <Bot className="w-5 h-5 lg:w-6 lg:h-6 text-white" /> : <User className="w-5 h-5 text-gray-400" />}
                             </div>
@@ -246,8 +262,8 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
                                         <ProfessionalReport report={msg.content} />
                                     ) : (
                                         <div className={`p-4 lg:p-6 rounded-[2rem] backdrop-blur-md shadow-2xl inline-block text-left ${msg.role === "user"
-                                                ? "bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-none border border-blue-400/30"
-                                                : "bg-white/[0.04] text-gray-100 rounded-tl-none border border-white/10"
+                                            ? "bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-none border border-blue-400/30"
+                                            : "bg-white/[0.04] text-gray-100 rounded-tl-none border border-white/10"
                                             }`}>
                                             <div className="prose prose-invert prose-p:leading-relaxed prose-strong:text-white max-w-none text-sm lg:text-[15px]">
                                                 <ReactMarkdown>{msg.content || (isLoading && !msg.steps ? "..." : "")}</ReactMarkdown>
