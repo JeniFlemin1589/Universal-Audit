@@ -5,6 +5,9 @@ class UploadedFile(BaseModel):
     name: str
     uri: str
     type: str # "reference" or "target"
+    status: str = "uploaded" # 'pending', 'uploading', 'uploaded', 'failed'
+    local_path: Optional[str] = None
+    error_message: Optional[str] = None
 
 class AuditRule(BaseModel):
     rule_id: str = Field(description="Unique identifier for the rule")

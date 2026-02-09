@@ -7,39 +7,7 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-# Define UploadedFile class as it's used in the new methods
-class UploadedFile:
-    def __init__(self, name: str, uri: str, type: str, local_path: str = None, status: str = "uploaded", error_message: str = None):
-        self.name = name
-        self.uri = uri
-        self.type = type
-        self.local_path = local_path
-        self.status = status # 'pending', 'uploading', 'uploaded', 'failed'
-        self.error_message = error_message
-
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "uri": self.uri,
-            "type": self.type,
-            "local_path": self.local_path,
-            "status": self.status,
-            "error_message": self.error_message
-        }
-
-    @classmethod
-    def from_dict(cls, data):
-        return cls(
-            name=data["name"],
-            uri=data["uri"],
-            type=data["type"],
-            local_path=data.get("local_path"),
-            status=data.get("status", "uploaded"),
-            error_message=data.get("error_message")
-        )
-
-    def __repr__(self):
-        return f"UploadedFile(name='{self.name}', status='{self.status}', error='{self.error_message}', uri='{self.uri}')"
+from backend.models import UploadedFile
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -95,8 +63,8 @@ class FileManager:
                 data = doc.to_dict()
                 # Convert list of dicts to UploadedFile objects
                 return {
-                    "reference": [UploadedFile.from_dict(f) for f in data.get("reference", [])],
-                    "target": [UploadedFile.from_dict(f) for f in data.get("target", [])],
+                    "reference": [UploadedFile(**f) for f in data.get("reference", [])],
+                    "target": [UploadedFile(**f) for f in data.get("target", [])],
                     "summary": data.get("summary"),
                     "history": data.get("history", [])
                 }
@@ -132,7 +100,7 @@ class FileManager:
             
             # Prepare for DB
             db_data = {
-                file_type: [f.to_dict() for f in details[file_type]]
+                file_type: [f.model_dump() for f in details[file_type]]
             }
             self._save_session_to_db(session_id, db_data)
 

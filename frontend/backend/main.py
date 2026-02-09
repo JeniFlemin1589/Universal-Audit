@@ -142,18 +142,23 @@ async def chat_stream(request: ChatRequest):
     """
     # Hydrate Session from Request Data (Crucial for Serverless Persistence)
     # This ensures that files already known by the UI are registered in the backend session
-    from backend.file_manager import UploadedFile as FMFile
+    from backend.models import UploadedFile
     
     for f in request.reference_files:
+        # Check if f is already an UploadedFile object or a dict from JSON
+        # Fastapi handles Pydantic model conversion automatically for nested models in ChatRequest.
+        # So 'f' here is ALREADY an UploadedFile instance from models.py!
+        # We just need to ensure we pass it correctly. 
+        # The 'status' field might default to 'uploaded' if not sent by frontend, which is fine.
         file_manager.add_file_to_session(
             request.session_id, 
-            FMFile(name=f.name, uri=f.uri, type="reference", status="uploaded"), 
+            f, 
             "reference"
         )
     for f in request.target_files:
         file_manager.add_file_to_session(
             request.session_id, 
-            FMFile(name=f.name, uri=f.uri, type="target", status="uploaded"), 
+            f, 
             "target"
         )
 
