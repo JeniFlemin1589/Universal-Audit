@@ -73,7 +73,7 @@ def upload_reference(
         if file_obj.status == "pending":
             if os.environ.get("VERCEL"):
                 # Vercel kills bg tasks, so run sync
-                asyncio.run(file_manager.perform_background_upload(file_obj))
+                file_manager.perform_background_upload(file_obj)
             else:
                 background_tasks.add_task(file_manager.perform_background_upload, file_obj)
             
@@ -104,7 +104,7 @@ def upload_target(
         
         if file_obj.status == "pending":
             if os.environ.get("VERCEL"):
-                asyncio.run(file_manager.perform_background_upload(file_obj))
+                file_manager.perform_background_upload(file_obj)
             else:
                 background_tasks.add_task(file_manager.perform_background_upload, file_obj)
             
