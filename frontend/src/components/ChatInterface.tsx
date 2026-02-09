@@ -1,6 +1,10 @@
 "use client";
 
+import React, { useState, useEffect, useRef } from "react";
 import ProfessionalReport from "@/components/ProfessionalReport";
+import { Bot, User, Send, ChevronDown, ChevronRight, Loader2, CheckCircle2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
     role: "user" | "assistant";
