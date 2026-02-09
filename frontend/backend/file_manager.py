@@ -17,6 +17,27 @@ class UploadedFile:
         self.status = status # 'pending', 'uploading', 'uploaded', 'failed'
         self.error_message = error_message
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "uri": self.uri,
+            "type": self.type,
+            "local_path": self.local_path,
+            "status": self.status,
+            "error_message": self.error_message
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            name=data["name"],
+            uri=data["uri"],
+            type=data["type"],
+            local_path=data.get("local_path"),
+            status=data.get("status", "uploaded"),
+            error_message=data.get("error_message")
+        )
+
     def __repr__(self):
         return f"UploadedFile(name='{self.name}', status='{self.status}', error='{self.error_message}', uri='{self.uri}')"
 
@@ -25,9 +46,10 @@ class FileManager:
         self.client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
         # Use temp dir for cache to avoid read-only errors on serverless
         self.cache_file = os.path.join(tempfile.gettempdir(), "file_cache.json")
+        self.sessions_file = os.path.join(tempfile.gettempdir(), "sessions_cache.json")
         self.cache = self._load_cache()
         # Session Store: { session_id: { "reference": [UploadedFile], "target": [UploadedFile] } }
-        self.sessions = {}
+        self.sessions = self._load_sessions()
 
     def _load_cache(self):
         if os.path.exists(self.cache_file):
@@ -41,6 +63,42 @@ class FileManager:
     def _save_cache(self):
         with open(self.cache_file, 'w') as f:
             json.dump(self.cache, f)
+
+    def _load_sessions(self):
+        if os.path.exists(self.sessions_file):
+            try:
+                with open(self.sessions_file, 'r') as f:
+                    data = json.load(f)
+                    # Convert dicts back to UploadedFile objects
+                    sessions = {}
+                    for sid, sdata in data.items():
+                        sessions[sid] = {
+                            "reference": [UploadedFile.from_dict(f) for f in sdata.get("reference", [])],
+                            "target": [UploadedFile.from_dict(f) for f in sdata.get("target", [])],
+                            "summary": sdata.get("summary"),
+                            "history": sdata.get("history", [])
+                        }
+                    return sessions
+            except Exception as e:
+                logger.error(f"Failed to load sessions: {e}")
+                return {}
+        return {}
+
+    def _save_sessions(self):
+        try:
+            # Convert UploadedFile objects to dicts
+            data = {}
+            for sid, sdata in self.sessions.items():
+                data[sid] = {
+                    "reference": [f.to_dict() for f in sdata.get("reference", [])],
+                    "target": [f.to_dict() for f in sdata.get("target", [])],
+                    "summary": sdata.get("summary"),
+                    "history": sdata.get("history", [])
+                }
+            with open(self.sessions_file, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.error(f"Failed to save sessions: {e}")
 
     def get_session_files(self, session_id: str, file_type: str = "reference"):
         """Retrieve files for a specific session."""
@@ -57,12 +115,14 @@ class FileManager:
         existing = [f for f in self.sessions[session_id][file_type] if f.uri == file_obj.uri]
         if not existing:
              self.sessions[session_id][file_type].append(file_obj)
+             self._save_sessions()
 
     def update_session_summary(self, session_id: str, summary: str):
         """Updates the session summary."""
         if session_id not in self.sessions:
              self.sessions[session_id] = {"reference": [], "target": [], "summary": None, "history": []}
         self.sessions[session_id]["summary"] = summary
+        self._save_sessions()
 
     def get_session_details(self, session_id: str):
         """Returns full session details."""

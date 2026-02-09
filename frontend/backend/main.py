@@ -140,7 +140,23 @@ async def chat_stream(request: ChatRequest):
     """
     Streams the agents' thought process and final response.
     """
+    # Hydrate Session from Request Data (Crucial for Serverless Persistence)
+    # This ensures that files already known by the UI are registered in the backend session
+    from backend.file_manager import UploadedFile as FMFile
     
+    for f in request.reference_files:
+        file_manager.add_file_to_session(
+            request.session_id, 
+            FMFile(name=f.name, uri=f.uri, type="reference", status="uploaded"), 
+            "reference"
+        )
+    for f in request.target_files:
+        file_manager.add_file_to_session(
+            request.session_id, 
+            FMFile(name=f.name, uri=f.uri, type="target", status="uploaded"), 
+            "target"
+        )
+
     async def event_generator():
         try:
             # Wait for any background uploads to finish before starting agent
