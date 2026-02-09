@@ -86,7 +86,7 @@ class FileManager:
     def get_session_details(self, session_id: str):
         """Returns full session details from Firestore."""
         if not self.db:
-            return {}
+            return {"reference": [], "target": [], "summary": None, "history": []}
         
         try:
             doc_ref = self.db.collection("sessions").document(session_id)
