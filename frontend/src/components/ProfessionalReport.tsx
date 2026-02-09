@@ -28,34 +28,64 @@ export default function ProfessionalReport({ report }: ProfessionalReportProps) 
 
         try {
             setIsExporting(true);
+            console.log("Starting PDF export...");
 
-            // Optimization for high-quality capture
             const element = reportRef.current;
+
+            // Capture the entire report as a high-quality image
             const canvas = await html2canvas(element, {
                 scale: 2, // Higher scale for Retina/High-DPI look
-                backgroundColor: "#030303", // Ensure consistent dark background
+                backgroundColor: "#0a0a0a", // Dark background matching the theme
                 useCORS: true,
-                logging: false,
+                logging: true, // Enable logging for debugging
+                allowTaint: true,
+                scrollX: 0,
+                scrollY: 0,
                 windowWidth: element.scrollWidth,
                 windowHeight: element.scrollHeight
             });
 
+            console.log("Canvas captured:", canvas.width, "x", canvas.height);
+
             const imgData = canvas.toDataURL("image/png");
+
+            // Use A4 dimensions for professional look
             const pdf = new jsPDF({
                 orientation: "portrait",
-                unit: "px",
-                format: [canvas.width / 2, canvas.height / 2] // Sync with scale: 2
+                unit: "mm",
+                format: "a4"
             });
 
-            const imgProps = pdf.getImageProperties(imgData);
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
 
-            pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-            pdf.save(`Audit_Report_${new Date().getTime()}.pdf`);
+            // Calculate the image dimensions to fit the page width
+            const imgWidth = pageWidth - 20; // 10mm margin on each side
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            // Handle multi-page documents
+            let heightLeft = imgHeight;
+            let position = 10; // Top margin
+
+            // Add first page
+            pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
+            heightLeft -= (pageHeight - 20); // Account for margins
+
+            // Add subsequent pages if needed
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight + 10;
+                pdf.addPage();
+                pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
+                heightLeft -= (pageHeight - 20);
+            }
+
+            const filename = `Audit_Report_${new Date().toISOString().split('T')[0]}_${Date.now()}.pdf`;
+            pdf.save(filename);
+            console.log("PDF saved:", filename);
+
         } catch (error) {
             console.error("PDF Export failed:", error);
-            alert("Failed to generate PDF. Please try again.");
+            alert("Failed to generate PDF. Please check the console for details.");
         } finally {
             setIsExporting(false);
         }
