@@ -20,8 +20,11 @@ api_key = os.environ.get("GOOGLE_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
 def get_client():
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY not found in environment variables.")
     if client: return client
-    return genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+    return genai.Client(api_key=api_key)
 
 # Define State
 class AgentState(TypedDict):
