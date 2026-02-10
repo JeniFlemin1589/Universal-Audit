@@ -61,15 +61,30 @@ class FileManager:
             doc = doc_ref.get()
             if doc.exists:
                 data = doc.to_dict()
-                # Convert list of dicts to UploadedFile objects
+                
+                def parse_files(file_list):
+                    valid_files = []
+                    if not file_list:
+                        return valid_files
+                    for f in file_list:
+                        try:
+                            # Handle potential missing fields by checking dict keys against model
+                            # Actually, Pydantic should handle it, but catch the error
+                            valid_files.append(UploadedFile(**f))
+                        except Exception as parse_err:
+                            logger.error(f"Failed to parse file record in session {session_id}: {f}, Error: {parse_err}")
+                    return valid_files
+
                 return {
-                    "reference": [UploadedFile(**f) for f in data.get("reference", [])],
-                    "target": [UploadedFile(**f) for f in data.get("target", [])],
+                    "reference": parse_files(data.get("reference", [])),
+                    "target": parse_files(data.get("target", [])),
                     "summary": data.get("summary"),
                     "history": data.get("history", [])
                 }
         except Exception as e:
             logger.error(f"Failed to load session {session_id} from Firestore: {e}")
+            if 'doc' in locals() and doc.exists:
+                logger.error(f"Raw data causing error: {doc.to_dict()}")
             
         return {"reference": [], "target": [], "summary": None, "history": []}
 
