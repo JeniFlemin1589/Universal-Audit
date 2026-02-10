@@ -1,6 +1,7 @@
 import os
 import shutil
 import logging
+import asyncio
 from typing import List, Optional
 import google.genai.files
 from google import genai
@@ -252,6 +253,46 @@ class FileManager:
                 file_type: [f.model_dump() for f in updated_files]
             }
             self._save_session_to_db(session_id, db_data, user_id, db_client)
+
+    async def wait_for_uploads(self, session_id: str, timeout: int = 60):
+        """Wait for all pending uploads in a session to complete."""
+        elapsed = 0
+        interval = 2
+        while elapsed < timeout:
+            details = self.get_session_details(session_id)
+            all_files = details.get("reference", []) + details.get("target", [])
+            
+            pending = [f for f in all_files if f.status == "pending"]
+            if not pending:
+                logger.info(f"All uploads complete for session {session_id}")
+                return
+            
+            logger.info(f"Waiting for {len(pending)} pending uploads in session {session_id}...")
+            await asyncio.sleep(interval)
+            elapsed += interval
+        
+        logger.warning(f"Upload wait timeout for session {session_id}")
+
+    def list_files(self):
+        """List all files uploaded to Gemini."""
+        if not self.client:
+            return []
+        try:
+            return list(self.client.files.list())
+        except Exception as e:
+            logger.error(f"Failed to list Gemini files: {e}")
+            return []
+
+    def delete_file(self, name: str):
+        """Delete a file from Gemini."""
+        if not self.client:
+            raise ValueError("Gemini Client not initialized")
+        try:
+            self.client.files.delete(name=name)
+            logger.info(f"Deleted file from Gemini: {name}")
+        except Exception as e:
+            logger.error(f"Failed to delete Gemini file {name}: {e}")
+            raise e
 
     def delete_session_files(self, session_id: str):
         """Cleanup files for a session (Optional)."""
