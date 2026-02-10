@@ -48,8 +48,12 @@ export default function Home() {
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const token = await user?.getIdToken();
       const res = await fetch(`${API_URL}/upload/${type}`, {
         method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
         body: formData,
       });
 

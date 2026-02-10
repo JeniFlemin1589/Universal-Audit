@@ -5,6 +5,7 @@ import ProfessionalReport from "@/components/ProfessionalReport";
 import { Bot, User, Send, ChevronDown, ChevronRight, Loader2, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
+import { useAuth } from "@/context/AuthContext";
 
 interface Message {
     role: "user" | "assistant";
@@ -25,6 +26,7 @@ interface ChatInterfaceProps {
 }
 
 export default function ChatInterface({ referenceFiles, targetFiles, scenario, sessionId }: ChatInterfaceProps) {
+    const { user } = useAuth();
     const [input, setInput] = useState("");
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -53,9 +55,13 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
 
         try {
             const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const token = await user?.getIdToken();
             const res = await fetch(`${API_URL}/chat/stream`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     message: userMsg.content,
                     scenario: scenario,

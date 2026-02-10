@@ -8,13 +8,16 @@ load_dotenv()
 
 import json
 import json
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from backend.file_manager import FileManager
 from backend.agents import app_graph
 from backend.models import ChatRequest
 import tempfile
+import firebase_admin
+from firebase_admin import credentials, auth
+import json
 
 # Initialize Logging
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +41,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize Firebase Admin
+if not firebase_admin._apps:
+    try:
+        service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
+        if service_account_json:
+            service_account_info = json.loads(service_account_json)
+            cred = credentials.Certificate(service_account_info)
+            firebase_admin.initialize_app(cred)
+            logger.info("Firebase Admin initialized successfully.")
+        else:
+            logger.warning("FIREBASE_SERVICE_ACCOUNT not found.")
+    except Exception as e:
+        logger.error(f"Failed to initialize Firebase: {e}")
+
+# Dependency to verify Firebase Token and get User ID
+def get_current_user_id(authorization: str = Header(None)):
+    if not authorization:
+        # Fallback for dev/testing if needed, or raise 401
+        # For security, we should raise 401
+        # allow bypass if API key is present? No.
+        raise HTTPException(status_code=401, detail="Missing Authorization Header")
+        
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except Exception as e:
+        logger.error(f"Auth failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid Authentication Token")
+
 TEMP_DIR = tempfile.gettempdir()
 # No need to makedirs for system temp, it exists.
 
@@ -49,7 +82,8 @@ TEMP_DIR = tempfile.gettempdir()
 def upload_reference(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...), 
-    session_id: str = Form(...)
+    session_id: str = Form(...),
+    user_id: str = Depends(get_current_user_id)
 ):
     try:
         # Save to permanent temp location (files/ directory or similar) to ensure it survives until bg task runs
@@ -60,12 +94,13 @@ def upload_reference(
         with open(save_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Register Intent
+        # Register Intent - pass client
         file_obj = file_manager.register_pending_file(
             file_path=save_path, 
             display_name=file.filename, 
             session_id=session_id, 
-            file_type="reference"
+            file_type="reference",
+            user_id=user_id
         )
         
         # If pending, queue background task
@@ -73,9 +108,9 @@ def upload_reference(
         if file_obj.status == "pending":
             if os.environ.get("VERCEL"):
                 # Vercel kills bg tasks, so run sync
-                file_manager.perform_background_upload(file_obj)
+                file_manager.perform_background_upload(file_obj, session_id, "reference", user_id=user_id)
             else:
-                background_tasks.add_task(file_manager.perform_background_upload, file_obj)
+                background_tasks.add_task(file_manager.perform_background_upload, file_obj, session_id, "reference", user_id=user_id)
             
         return {"name": file_obj.name, "uri": file_obj.uri, "type": file_obj.type, "status": file_obj.status}
         
@@ -86,7 +121,8 @@ def upload_reference(
 def upload_target(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...), 
-    session_id: str = Form(...)
+    session_id: str = Form(...),
+    user_id: str = Depends(get_current_user_id)
 ):
     try:
         safe_name = f"{session_id}_{file.filename}"
@@ -99,14 +135,15 @@ def upload_target(
             file_path=save_path, 
             display_name=file.filename, 
             session_id=session_id, 
-            file_type="target"
+            file_type="target",
+            user_id=user_id
         )
         
         if file_obj.status == "pending":
             if os.environ.get("VERCEL"):
-                file_manager.perform_background_upload(file_obj)
+                file_manager.perform_background_upload(file_obj, session_id, "target", user_id=user_id)
             else:
-                background_tasks.add_task(file_manager.perform_background_upload, file_obj)
+                background_tasks.add_task(file_manager.perform_background_upload, file_obj, session_id, "target", user_id=user_id)
             
         return {"name": file_obj.name, "uri": file_obj.uri, "type": file_obj.type, "status": file_obj.status}
     except Exception as e:
@@ -131,10 +168,10 @@ def delete_file(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/session/{session_id}")
-def get_session_info(session_id: str):
+def get_session_info(session_id: str, user_id: str = Depends(get_current_user_id)):
     """Get session details including files and summary."""
-    logger.info(f"Fetching session: {session_id}, Firestore initialized: {file_manager.db is not None}")
-    details = file_manager.get_session_details(session_id)
+    logger.info(f"Fetching session: {session_id} for user {user_id}")
+    details = file_manager.get_session_details(session_id, user_id)
     result = {
         "reference": [f.model_dump() if hasattr(f, 'model_dump') else f for f in details.get("reference", [])],
         "target": [f.model_dump() if hasattr(f, 'model_dump') else f for f in details.get("target", [])],
@@ -148,18 +185,18 @@ def get_session_info(session_id: str):
 def debug_status():
     """Debug endpoint to check system status."""
     return {
-        "firestore_initialized": file_manager.db is not None,
+        "supabase_initialized": file_manager.db is not None,
         "google_api_key_set": bool(os.environ.get("GOOGLE_API_KEY")),
-        "firebase_sa_set": bool(os.environ.get("FIREBASE_SERVICE_ACCOUNT")),
+        "supabase_keys_set": bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY")),
     }
 
 import time
 
 @app.get("/debug/write_test")
 def debug_write_test():
-    """Force a write to 'test_session' in Firestore to verify write permissions."""
+    """Force a write to 'test_session' in Supabase to verify write permissions."""
     if not file_manager.db:
-        raise HTTPException(status_code=500, detail="Firestore not initialized")
+        raise HTTPException(status_code=500, detail="Supabase not initialized")
     
     session_id = "test_session"
     try:
@@ -167,10 +204,11 @@ def debug_write_test():
             "summary": f"Debug write check at {time.time()}",
             "history": [{"role": "system", "content": "Debug check successful"}]
         }
-        # WRITE DIRECTLY to catch error!
-        file_manager.db.collection("sessions").document(session_id).set(data, merge=True)
-        # Also read it back to confirm
-        read_back = file_manager.db.collection("sessions").document(session_id).get().to_dict()
+        # Use file_manager helper which handles Supabase syntax
+        file_manager._save_session_to_db(session_id, data)
+        
+        # Read back to verify
+        read_back = file_manager.get_session_details(session_id)
         
         return {
             "status": "success", 
@@ -180,11 +218,11 @@ def debug_write_test():
         }
     except Exception as e:
         logger.error(f"Debug write failed: {e}")
-        return {"status": "error", "message": f"Firestore Error: {str(e)}", "type": str(type(e))}
+        return {"status": "error", "message": f"Supabase Error: {str(e)}", "type": str(type(e))}
 
 
 @app.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, user_id: str = Depends(get_current_user_id)):
     """
     Streams the agents' thought process and final response.
     """
@@ -201,13 +239,15 @@ async def chat_stream(request: ChatRequest):
         file_manager.add_file_to_session(
             request.session_id, 
             f, 
-            "reference"
+            "reference",
+            user_id=user_id
         )
     for f in request.target_files:
         file_manager.add_file_to_session(
             request.session_id, 
             f, 
-            "target"
+            "target",
+            user_id=user_id
         )
 
     async def event_generator():
@@ -221,8 +261,8 @@ async def chat_stream(request: ChatRequest):
             # The request body is the source of truth for serverless deployments.
             # Only fall back to Firestore if the request body has no files (backward compatibility).
             
-            session_refs = request.reference_files if request.reference_files else file_manager.get_session_files(request.session_id, "reference")
-            session_targets = request.target_files if request.target_files else file_manager.get_session_files(request.session_id, "target")
+            session_refs = request.reference_files if request.reference_files else file_manager.get_session_files(request.session_id, "reference", user_id=user_id)
+            session_targets = request.target_files if request.target_files else file_manager.get_session_files(request.session_id, "target", user_id=user_id)
             
             # Log for debugging
             logger.info(f"Agent State - Reference Files: {len(session_refs)}, Target Files: {len(session_targets)}")
@@ -264,7 +304,7 @@ async def chat_stream(request: ChatRequest):
                             yield f"data: {json.dumps({'step': 'final', 'content': output['final_response']})}\n\n"
                             
                             # Save final response to session summary for Profile Page
-                            file_manager.update_session_summary(request.session_id, output['final_response'])
+                            file_manager.update_session_summary(request.session_id, output['final_response'], user_id=user_id)
 
             yield "data: [DONE]\n\n"
             yield "data: [DONE]\n\n"

@@ -6,3 +6,4 @@ langchain
 langchain-google-genai
 python-multipart
 firebase-admin
+supabase

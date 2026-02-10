@@ -25,13 +25,19 @@ export default function ProfilePage() {
     }, [user, loading, router]);
 
     const fetchSessionData = async (uid: string) => {
+        if (!user) return;
         try {
             setIsLoadingData(true);
             setFetchError(null);
 
             // Primary: Fetch via backend API (uses Firebase Admin SDK, bypasses security rules)
             const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const res = await fetch(`${API_URL}/session/${uid}`);
+            const token = await user.getIdToken();
+            const res = await fetch(`${API_URL}/session/${uid}`, {
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            });
 
             if (res.ok) {
                 const data = await res.json();
