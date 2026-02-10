@@ -167,12 +167,20 @@ def debug_write_test():
             "summary": f"Debug write check at {time.time()}",
             "history": [{"role": "system", "content": "Debug check successful"}]
         }
-        # Use underlying _save_session_to_db to test actual DB write
-        file_manager._save_session_to_db(session_id, data)
-        return {"status": "success", "message": f"Successfully wrote to session: {session_id}", "data": data}
+        # WRITE DIRECTLY to catch error!
+        file_manager.db.collection("sessions").document(session_id).set(data, merge=True)
+        # Also read it back to confirm
+        read_back = file_manager.db.collection("sessions").document(session_id).get().to_dict()
+        
+        return {
+            "status": "success", 
+            "message": f"Successfully wrote to and verified session: {session_id}", 
+            "data_written": data,
+            "data_read": read_back
+        }
     except Exception as e:
         logger.error(f"Debug write failed: {e}")
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": f"Firestore Error: {str(e)}", "type": str(type(e))}
 
 
 @app.post("/chat/stream")
