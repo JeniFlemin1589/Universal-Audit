@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import json
-import json
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -17,7 +16,6 @@ from backend.models import ChatRequest
 import tempfile
 import firebase_admin
 from firebase_admin import credentials, auth
-import json
 
 # Initialize Logging
 logging.basicConfig(level=logging.INFO)
@@ -310,7 +308,9 @@ async def chat_stream(request: ChatRequest, user_id: str = Depends(get_current_u
             yield "data: [DONE]\n\n"
             
         except Exception as e:
+            import traceback
             logger.error(f"Stream error: {e}")
+            logger.error(traceback.format_exc())
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

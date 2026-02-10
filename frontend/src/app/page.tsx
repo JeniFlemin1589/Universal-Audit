@@ -47,7 +47,7 @@ export default function Home() {
     formData.append("session_id", sessionId);
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
       const token = await user?.getIdToken();
       const res = await fetch(`${API_URL}/upload/${type}`, {
         method: "POST",

@@ -31,7 +31,7 @@ export default function ProfilePage() {
             setFetchError(null);
 
             // Primary: Fetch via backend API (uses Firebase Admin SDK, bypasses security rules)
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
             const token = await user.getIdToken();
             const res = await fetch(`${API_URL}/session/${uid}`, {
                 headers: {

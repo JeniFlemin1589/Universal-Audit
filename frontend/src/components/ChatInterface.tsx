@@ -54,7 +54,7 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
         ]);
 
         try {
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
             const token = await user?.getIdToken();
             const res = await fetch(`${API_URL}/chat/stream`, {
                 method: "POST",
@@ -158,19 +158,21 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
                             });
 
                         } catch (e) {
-                            // Ignore parse errors for incomplete chunks (though buffer logic should prevent this usually)
-                            // But handle our thrown errors
-                            if (e instanceof Error && (e.message.includes("overloaded") || e.message.includes("System"))) {
-                                console.error("Critical Stream Error", e);
+                            // If it's an Error we threw (from data.error), display it to user
+                            if (e instanceof Error && e.message && !e.message.includes("Unexpected token")) {
+                                console.error("Stream Error:", e);
                                 setMessages(prev => {
                                     const newMsgs = [...prev];
                                     const lastMsg = newMsgs[newMsgs.length - 1];
-                                    lastMsg.content = `⚠️ **System Alert**: ${e.message}`;
+                                    lastMsg.content = `### ⚠️ Error\n\n${e.message}`;
+                                    lastMsg.steps = [];
                                     return newMsgs;
                                 });
+                                setIsLoading(false);
                                 return; // Stop processing
                             }
-                            console.warn("Non-critical stream parse error", e);
+                            // Ignore JSON parse errors for incomplete chunks
+                            console.warn("Stream parse warning:", e);
                         }
                     }
                 }
