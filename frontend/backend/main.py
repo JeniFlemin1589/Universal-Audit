@@ -153,6 +153,27 @@ def debug_status():
         "firebase_sa_set": bool(os.environ.get("FIREBASE_SERVICE_ACCOUNT")),
     }
 
+import time
+
+@app.get("/debug/write_test")
+def debug_write_test():
+    """Force a write to 'test_session' in Firestore to verify write permissions."""
+    if not file_manager.db:
+        raise HTTPException(status_code=500, detail="Firestore not initialized")
+    
+    session_id = "test_session"
+    try:
+        data = {
+            "summary": f"Debug write check at {time.time()}",
+            "history": [{"role": "system", "content": "Debug check successful"}]
+        }
+        # Use underlying _save_session_to_db to test actual DB write
+        file_manager._save_session_to_db(session_id, data)
+        return {"status": "success", "message": f"Successfully wrote to session: {session_id}", "data": data}
+    except Exception as e:
+        logger.error(f"Debug write failed: {e}")
+        return {"status": "error", "message": str(e)}
+
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
