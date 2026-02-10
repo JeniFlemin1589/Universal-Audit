@@ -133,13 +133,24 @@ def delete_file(name: str):
 @app.get("/session/{session_id}")
 def get_session_info(session_id: str):
     """Get session details including files and summary."""
+    logger.info(f"Fetching session: {session_id}, Firestore initialized: {file_manager.db is not None}")
     details = file_manager.get_session_details(session_id)
-    # Serialize UploadedFile objects to dicts for JSON response
-    return {
+    result = {
         "reference": [f.model_dump() if hasattr(f, 'model_dump') else f for f in details.get("reference", [])],
         "target": [f.model_dump() if hasattr(f, 'model_dump') else f for f in details.get("target", [])],
         "summary": details.get("summary"),
         "history": details.get("history", [])
+    }
+    logger.info(f"Session {session_id}: {len(result['reference'])} refs, {len(result['target'])} targets, summary={'yes' if result['summary'] else 'no'}")
+    return result
+
+@app.get("/debug/status")
+def debug_status():
+    """Debug endpoint to check system status."""
+    return {
+        "firestore_initialized": file_manager.db is not None,
+        "google_api_key_set": bool(os.environ.get("GOOGLE_API_KEY")),
+        "firebase_sa_set": bool(os.environ.get("FIREBASE_SERVICE_ACCOUNT")),
     }
 
 
