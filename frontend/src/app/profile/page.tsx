@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, FileText, CheckCircle, Clock, RefreshCw, BookOpen, FileStack, ShieldCheck, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
 
 export default function ProfilePage() {
     const { user, loading, signOut } = useAuth();
@@ -43,29 +41,6 @@ export default function ProfilePage() {
                 const data = await res.json();
                 console.log("Session data loaded via API:", data);
 
-                // Check if API returned valid data (has summary or at least files)
-                // If not, try LocalStorage fallback
-                if (!data.summary && (!data.reference || data.reference.length === 0)) {
-                    console.warn("API returned empty session, checking LocalStorage backup...");
-                    const localBackup = localStorage.getItem("last_audit_data");
-                    if (localBackup) {
-                        try {
-                            const parsedBackup = JSON.parse(localBackup);
-                            console.log("Restored session from LocalStorage:", parsedBackup);
-                            // Ensure structure matches
-                            setSessionData({
-                                reference: parsedBackup.reference || [],
-                                target: parsedBackup.target || [],
-                                summary: parsedBackup.summary || null,
-                                history: parsedBackup.history || [], // Local backup likely won't have full history unless we saved it
-                            });
-                            return;
-                        } catch (parseErr) {
-                            console.error("Failed to parse LocalStorage backup", parseErr);
-                        }
-                    }
-                }
-
                 // Normalize data: API returns UploadedFile objects, ensure we have arrays
                 const normalized = {
                     reference: Array.isArray(data.reference) ? data.reference : [],
@@ -77,19 +52,9 @@ export default function ProfilePage() {
                 return;
             }
 
-            console.warn("API fetch failed, trying frontend Firestore...");
-            // Fallback: Try frontend Firestore directly
-            const docRef = doc(db, "sessions", uid);
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                console.log("Session data loaded via Firestore:", data);
-                setSessionData(data);
-            } else {
-                console.log("No session data found for user:", uid);
-                setSessionData(null);
-            }
+            // API returned an error
+            console.warn(`API fetch failed with status ${res.status}`);
+            setSessionData(null);
         } catch (e: any) {
             console.error("Failed to fetch session data:", e);
             setFetchError(e.message || "Failed to load data. Please try refreshing.");
