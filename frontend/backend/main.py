@@ -133,7 +133,15 @@ def delete_file(name: str):
 @app.get("/session/{session_id}")
 def get_session_info(session_id: str):
     """Get session details including files and summary."""
-    return file_manager.get_session_details(session_id)
+    details = file_manager.get_session_details(session_id)
+    # Serialize UploadedFile objects to dicts for JSON response
+    return {
+        "reference": [f.model_dump() if hasattr(f, 'model_dump') else f for f in details.get("reference", [])],
+        "target": [f.model_dump() if hasattr(f, 'model_dump') else f for f in details.get("target", [])],
+        "summary": details.get("summary"),
+        "history": details.get("history", [])
+    }
+
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):

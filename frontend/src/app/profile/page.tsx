@@ -28,20 +28,42 @@ export default function ProfilePage() {
         try {
             setIsLoadingData(true);
             setFetchError(null);
+
+            // Primary: Fetch via backend API (uses Firebase Admin SDK, bypasses security rules)
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const res = await fetch(`${API_URL}/session/${uid}`);
+
+            if (res.ok) {
+                const data = await res.json();
+                console.log("Session data loaded via API:", data);
+
+                // Normalize data: API returns UploadedFile objects, ensure we have arrays
+                const normalized = {
+                    reference: Array.isArray(data.reference) ? data.reference : [],
+                    target: Array.isArray(data.target) ? data.target : [],
+                    summary: data.summary || null,
+                    history: data.history || [],
+                };
+                setSessionData(normalized);
+                return;
+            }
+
+            console.warn("API fetch failed, trying frontend Firestore...");
+            // Fallback: Try frontend Firestore directly
             const docRef = doc(db, "sessions", uid);
             const docSnap = await getDoc(docRef);
 
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                console.log("Session data loaded:", data);
+                console.log("Session data loaded via Firestore:", data);
                 setSessionData(data);
             } else {
                 console.log("No session data found for user:", uid);
                 setSessionData(null);
             }
         } catch (e: any) {
-            console.error("Failed to fetch session data from Firestore", e);
-            setFetchError(e.message || "Failed to load data.");
+            console.error("Failed to fetch session data:", e);
+            setFetchError(e.message || "Failed to load data. Please try refreshing.");
             setSessionData(null);
         } finally {
             setIsLoadingData(false);
