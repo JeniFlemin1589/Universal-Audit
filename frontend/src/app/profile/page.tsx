@@ -37,6 +37,29 @@ export default function ProfilePage() {
                 const data = await res.json();
                 console.log("Session data loaded via API:", data);
 
+                // Check if API returned valid data (has summary or at least files)
+                // If not, try LocalStorage fallback
+                if (!data.summary && (!data.reference || data.reference.length === 0)) {
+                    console.warn("API returned empty session, checking LocalStorage backup...");
+                    const localBackup = localStorage.getItem("last_audit_data");
+                    if (localBackup) {
+                        try {
+                            const parsedBackup = JSON.parse(localBackup);
+                            console.log("Restored session from LocalStorage:", parsedBackup);
+                            // Ensure structure matches
+                            setSessionData({
+                                reference: parsedBackup.reference || [],
+                                target: parsedBackup.target || [],
+                                summary: parsedBackup.summary || null,
+                                history: parsedBackup.history || [], // Local backup likely won't have full history unless we saved it
+                            });
+                            return;
+                        } catch (parseErr) {
+                            console.error("Failed to parse LocalStorage backup", parseErr);
+                        }
+                    }
+                }
+
                 // Normalize data: API returns UploadedFile objects, ensure we have arrays
                 const normalized = {
                     reference: Array.isArray(data.reference) ? data.reference : [],

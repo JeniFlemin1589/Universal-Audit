@@ -132,6 +132,20 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
 
                                 if (data.step === "final") {
                                     lastMsg.content = data.content;
+
+                                    // Fallback: Save to LocalStorage for Profile Page redundancy
+                                    try {
+                                        const sessionData = {
+                                            summary: data.content,
+                                            reference: referenceFiles,
+                                            target: targetFiles,
+                                            timestamp: new Date().toISOString()
+                                        };
+                                        localStorage.setItem("last_audit_data", JSON.stringify(sessionData));
+                                        console.log("Audit data backed up to local storage");
+                                    } catch (err) {
+                                        console.warn("Failed to save to local storage", err);
+                                    }
                                 }
 
                                 return newMsgs;
@@ -315,4 +329,3 @@ export default function ChatInterface({ referenceFiles, targetFiles, scenario, s
         </div>
     );
 }
-
