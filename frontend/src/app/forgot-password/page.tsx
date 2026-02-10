@@ -22,15 +22,22 @@ export default function ForgotPasswordPage() {
         setMessage("");
         setIsSubmitting(true);
         try {
+            console.log("Sending password reset email to:", email);
             await resetPassword(email);
-            setMessage("Password reset email sent! Check your inbox.");
+            console.log("Password reset email sent successfully!");
+            setMessage(`Password reset email sent to ${email}! Check your inbox and spam folder.`);
         } catch (err: any) {
+            console.error("Password reset error:", err.code, err.message);
             if (err.code === 'auth/user-not-found') {
-                setError("No account found with this email.");
+                setError("No account found with this email. Please sign up first.");
             } else if (err.code === 'auth/invalid-email') {
                 setError("Invalid email address.");
+            } else if (err.code === 'auth/too-many-requests') {
+                setError("Too many requests. Please wait a few minutes and try again.");
+            } else if (err.code === 'auth/network-request-failed') {
+                setError("Network error. Please check your internet connection.");
             } else {
-                setError(err.message || "Failed to send reset email.");
+                setError(`Error (${err.code}): ${err.message}`);
             }
         } finally {
             setIsSubmitting(false);
