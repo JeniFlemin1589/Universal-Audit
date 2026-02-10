@@ -71,11 +71,11 @@ export default function LoginPage() {
 
                     {/* Title */}
                     <div className="space-y-2">
-                        <h1 className="text-3xl font-bold tracking-tight text-white">
-                            {isLogin ? "Welcome Back" : "Create Account"}
+                        <h1 className="text-3xl font-bold tracking-tight text-white focus:outline-none">
+                            {isLogin ? "Universal Audit Login" : "Universal Audit Sign Up"}
                         </h1>
                         <p className="text-gray-500 text-sm">
-                            {isLogin ? "Enter your credentials to access the platform" : "Join the Universal Audit Platform"}
+                            {isLogin ? "Sign in to Universal Audit" : "Join Universal Audit"}
                         </p>
                     </div>
 
